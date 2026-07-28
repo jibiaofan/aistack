@@ -1,0 +1,7 @@
+{
+  "plugins": {
+    "ai-proxy": {"latest": "1.0.0"},
+    "key-auth": {"latest": "1.0.0"},
+    "rate-limiter": {"latest": "1.0.0"}
+  }
+}
