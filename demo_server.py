@@ -32,8 +32,7 @@ app = FastAPI(title="AIStack", version="2.2.2", docs_url="/api/docs")
 
 # ===================== AUTH ENDPOINTS =====================
 
-@app.post("/login")
-async def login(request: Request):
+async def _do_login(request: Request):
     """Handle login - supports both form and JSON."""
     content_type = request.headers.get("content-type", "")
     
@@ -60,11 +59,30 @@ async def login(request: Request):
     return JSONResponse({"error": "Invalid username or password"}, status_code=401)
 
 
-@app.post("/logout")
-async def logout():
+@app.post("/login")
+async def login(request: Request):
+    return await _do_login(request)
+
+
+@app.post("/auth/login")
+async def auth_login(request: Request):
+    return await _do_login(request)
+
+
+async def _do_logout():
     response = JSONResponse(content=None, status_code=200)
     response.delete_cookie(key=COOKIE_NAME)
     return response
+
+
+@app.post("/logout")
+async def logout():
+    return await _do_logout()
+
+
+@app.post("/auth/logout")
+async def auth_logout():
+    return await _do_logout()
 
 
 def get_current_user(request: Request):
@@ -106,13 +124,24 @@ async def version():
 
 
 @app.get("/api/v1/auth/config")
+@app.get("/auth/config")
 async def auth_config():
     return {
         "require_auth": True,
         "saml_enabled": False,
         "oidc_enabled": False,
         "cas_enabled": False,
+        "external_auth": None,
+        "version": "v2.2.2",
     }
+
+
+@app.post("/auth/update-password")
+async def auth_update_password(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return JSONResponse(content=None, status_code=200)
 
 
 @app.get("/api/v1/models")
@@ -188,6 +217,35 @@ async def model_usages(request: Request):
 
 @app.get("/api/v1/clusters")
 async def list_clusters(request: Request):
+    return {"items": [], "pagination": {"total": 0, "page": 1, "perPage": 10}}
+
+
+# v2 API routes (newer UI version)
+@app.api_route("/v2/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def v2_catchall(request: Request, path: str):
+    user = get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    if path == "users/me":
+        return {"id": "1", "name": "admin", "full_name": "Administrator", "is_admin": True, "role": "admin", "username": "admin", "require_password_change": False}
+    if path == "usage/meta":
+        return {"models": [], "organizations": []}
+    if "usage" in path or "breakdown" in path:
+        return {"items": [], "total": {"tokens": 0, "requests": 0}}
+    return {"items": [], "pagination": {"total": 0, "page": 1, "perPage": 10}}
+
+
+# v1 API routes (version endpoint without /api prefix)
+@app.get("/version")
+async def version_short():
+    return {"version": "v2.2.2", "git_commit": "HEAD"}
+
+
+@app.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def v1_catchall(request: Request, path: str):
+    user = get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
     return {"items": [], "pagination": {"total": 0, "page": 1, "perPage": 10}}
 
 
