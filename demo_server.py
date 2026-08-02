@@ -21,7 +21,7 @@ ADMIN_USER = "admin"
 ADMIN_PASS = "AIStack@2024"
 SECRET_KEY = "aistack-demo-secret-key-2024"
 COOKIE_NAME = "aistack_session"
-PORT = 8080
+PORT = int(os.environ.get("PORT", "3000"))
 
 # Resolve paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
