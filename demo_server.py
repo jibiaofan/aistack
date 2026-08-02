@@ -220,6 +220,172 @@ async def list_clusters(request: Request):
     return {"items": [], "pagination": {"total": 0, "page": 1, "perPage": 10}}
 
 
+# ===================== BILLING API =====================
+
+# Simulated billing data store (represents real system metrics)
+import random
+from datetime import datetime, timedelta
+
+def generate_billing_data():
+    """Generate realistic billing data based on system usage."""
+    now = datetime.now()
+    start_of_month = now.replace(day=1, hour=0, minute=0, second=0)
+    
+    models = [
+        {"id": "m1", "name": "Qwen2.5-72B-Instruct", "inputRate": 1.20, "outputRate": 1.80},
+        {"id": "m2", "name": "DeepSeek-V3", "inputRate": 1.00, "outputRate": 1.50},
+        {"id": "m3", "name": "Llama-3.1-70B", "inputRate": 1.00, "outputRate": 1.50},
+        {"id": "m4", "name": "FLUX.1-schnell", "inputRate": 0.00, "outputRate": 0.00},
+    ]
+    
+    tenants = [
+        {"id": "t1", "name": "admin", "budget": 2000, "alertPct": 80},
+        {"id": "t2", "name": "api-service", "budget": 1500, "alertPct": 70},
+        {"id": "t3", "name": "dev-team", "budget": 800, "alertPct": 90},
+    ]
+    
+    # Generate daily data for current month
+    days_elapsed = (now - start_of_month).days + 1
+    daily = []
+    for i in range(min(days_elapsed, 31)):
+        d = start_of_month + timedelta(days=i)
+        daily.append({
+            "date": d.strftime("%Y-%m-%d"),
+            "cost": round(random.uniform(30, 55), 2),
+            "tokens": random.randint(20000000, 45000000),
+            "requests": random.randint(400, 800)
+        })
+    
+    total_cost = sum(d["cost"] for d in daily)
+    total_tokens = sum(d["tokens"] for d in daily)
+    total_requests = sum(d["requests"] for d in daily)
+    
+    # Model breakdown
+    model_usage = []
+    remaining_cost = total_cost
+    for i, m in enumerate(models):
+        if i == len(models) - 1:
+            cost = round(remaining_cost, 2)
+        else:
+            cost = round(total_cost * [0.45, 0.28, 0.15, 0.12][i], 2)
+            remaining_cost -= cost
+        inTok = random.randint(80000000, 350000000) if m["inputRate"] > 0 else 0
+        outTok = random.randint(30000000, 120000000) if m["outputRate"] > 0 else 0
+        reqs = random.randint(1000, 7000)
+        model_usage.append({
+            "modelId": m["id"], "name": m["name"],
+            "tokens": inTok + outTok,
+            "inputTokens": inTok, "outputTokens": outTok,
+            "requests": reqs, "cost": cost,
+            "inputRate": m["inputRate"], "outputRate": m["outputRate"]
+        })
+    
+    # Tenant breakdown
+    tenant_usage = []
+    remaining = total_cost
+    for i, t in enumerate(tenants):
+        if i == len(tenants) - 1:
+            cost = round(remaining, 2)
+        else:
+            cost = round(total_cost * [0.55, 0.30, 0.15][i], 2)
+            remaining -= cost
+        tenant_usage.append({
+            "id": t["id"], "tenantId": t["id"], "name": t["name"],
+            "cost": cost, "tokens": random.randint(100000000, 600000000),
+            "requests": random.randint(2000, 10000),
+            "budget": t["budget"], "alertPct": t["alertPct"],
+            "status": "warning" if cost/t["budget"] > 0.7 else "active"
+        })
+    
+    # Historical billing periods
+    history = []
+    for m in range(6):
+        period_start = (now.replace(day=1) - timedelta(days=30*m)).replace(day=1)
+        period_end = (period_start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        history.append({
+            "id": f"inv-{6-m:03d}",
+            "period": f"{period_start.strftime('%Y-%m-%d')} ~ {period_end.strftime('%Y-%m-%d')}",
+            "amount": round(random.uniform(900, 1500), 2),
+            "tokens": random.randint(500000000, 1200000000),
+            "status": "paid" if m > 0 else "pending",
+            "createdAt": period_end.strftime("%Y-%m-%d")
+        })
+    
+    return {
+        "period": {"start": start_of_month.strftime("%Y-%m-%d"), "end": now.strftime("%Y-%m-%d")},
+        "summary": {
+            "total_cost": round(total_cost, 2),
+            "totalCost": round(total_cost, 2),
+            "total_tokens": total_tokens,
+            "totalTokens": total_tokens,
+            "total_requests": total_requests,
+            "totalRequests": total_requests,
+            "active_models": len(models),
+            "activeModels": len(models),
+            "avgDaily": round(total_cost / max(days_elapsed, 1), 2)
+        },
+        "daily": daily,
+        "models": model_usage,
+        "tenants": tenant_usage,
+        "history": history,
+        "rates": {
+            "Qwen2.5-72B-Instruct": {"input": 1.20, "output": 1.80},
+            "DeepSeek-V3": {"input": 1.00, "output": 1.50},
+            "Llama-3.1-70B": {"input": 1.00, "output": 1.50},
+            "FLUX.1-schnell": {"input": 0.00, "output": 0.04}
+        }
+    }
+
+
+@app.get("/v2/billing/overview")
+@app.get("/api/v1/billing/overview")
+async def billing_overview(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return generate_billing_data()
+
+
+@app.get("/v2/billing/export")
+@app.get("/api/v1/billing/export")
+async def billing_export(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    # Return a simple text-based "PDF" representation
+    data = generate_billing_data()
+    content = f"""AIStack Billing Statement
+Period: {data['period']['start']} ~ {data['period']['end']}
+Total Cost: ${data['summary']['totalCost']:.2f}
+Total Tokens: {data['summary']['totalTokens']:,}
+Total Requests: {data['summary']['totalRequests']:,}
+Active Models: {data['summary']['activeModels']}
+"""
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(content, media_type="text/plain",
+        headers={"Content-Disposition": "attachment; filename=billing-statement.txt"})
+
+
+@app.post("/v2/billing/rates")
+@app.post("/api/v1/billing/rates")
+async def save_billing_rates(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    return {"success": True, "rates": body}
+
+
+@app.post("/v2/billing/budget")
+@app.post("/api/v1/billing/budget")
+async def save_budget(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    return {"success": True, "budget": body}
+
+
 # v2 API routes (newer UI version)
 @app.api_route("/v2/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def v2_catchall(request: Request, path: str):
