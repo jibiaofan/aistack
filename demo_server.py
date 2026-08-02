@@ -244,11 +244,11 @@ def generate_billing_data():
         {"id": "t3", "name": "dev-team", "budget": 800, "alertPct": 90},
     ]
     
-    # Generate daily data for current month
-    days_elapsed = (now - start_of_month).days + 1
+    # Generate daily data for the trailing 30 days (rolling window so the
+    # range selector on the overview page has enough data to demonstrate).
     daily = []
-    for i in range(min(days_elapsed, 31)):
-        d = start_of_month + timedelta(days=i)
+    for i in range(30):
+        d = now - timedelta(days=29 - i)
         daily.append({
             "date": d.strftime("%Y-%m-%d"),
             "cost": round(random.uniform(30, 55), 2),
